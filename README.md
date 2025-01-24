@@ -1,0 +1,1 @@
+This repository contains the CGP (Conditional Gaussian Process) algorithm for time series. See the article "Fast analytical method to integrate multivariate Gaussians over hidden variables" for more details \url{https://hal.science/hal-04692487v1/document}.
