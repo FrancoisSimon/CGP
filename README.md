@@ -1,4 +1,4 @@
-This repository contains the CGP (Conditional Gaussian Process) algorithm for time series. See the article "Fast analytical method to integrate multivariate Gaussians over hidden variables" for more details https://hal.science/hal-04692487v1/document. This tool aims to facilitate the implementation of probabilistic models for time series.
+This repository contains the CGP (Conditional Gaussian Process) algorithm for time series. See the article "Fast analytical method to integrate multivariate Gaussians over hidden variables", see https://hal.science/hal-04692487v1/document for more details. This tool aims to facilitate the implementation of probabilistic models for time series.
 
 ## Abstract
 
