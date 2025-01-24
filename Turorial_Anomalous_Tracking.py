@@ -8,7 +8,8 @@ Algorithm to build a tracking model from the CGP framework
 """
 
 import numpy as np
-from cgp import anomalous_diff_mixture, transpose_layer, Initial_layer_constraints, Custom_RNN_layer, Final_layer
+from cgp import transpose_layer, Initial_layer_constraints, Custom_RNN_layer, Final_layer
+from simulate_tracks import anomalous_diff_mixture
 from matplotlib import pyplot as plt
 import tensorflow as tf
 
