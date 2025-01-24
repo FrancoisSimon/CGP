@@ -18,7 +18,7 @@ This tool can be used to model recurrent gaussians processes with observed varia
 To apply our model, we recommand the user to first identify the underlying variables that have degrees of freedom with regard to the observed variables and to the other hidden variables. Then, the user should try to express the probability of the current observed and hidden variables as a product of univariate Gaussians that depend on linear combinations the previous and current variables of the model, similarly to the methodology used in our article. If this is done correctly, the number of Gaussians should be equal to the sum of the number of hidden and observed variables (for one time step). NB: some processes cannot be expressed as such either because the random process is not Gaussian or because the process require non-linear combinations the previous and current variables of the model. If non-linear combinations are required, it might be possible to simplify the problem to find a good linear approximation as in our FRET example.
 It is also important to identify how to initialize the hidden variables.
 
-# Defining the constraint function
+## Defining the constraint function
 Once the recursive relations are identified, the user must translate them into a constraint function that will specify the relations between the variables and the model parameters.
 
 
