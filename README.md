@@ -1,1 +1,6 @@
 This repository contains the CGP (Conditional Gaussian Process) algorithm for time series. See the article "Fast analytical method to integrate multivariate Gaussians over hidden variables" for more details https://hal.science/hal-04692487v1/document.
+
+## Abstract
+
+Many biological and physical datasets can be modeled as Gaussian processes, whose parameters can be estimated using maximum likelihood estimation. The likelihood can be expressed as a product of conditional probabilities, where each term provides information about the model's behavior and dynamics. Here, we present a versatile framework for retrieving the physical properties of these models using products of univariate Gaussians that depend on a set of observed and hidden variables. To do so, our model uses a recurrence formula to integrate over the hidden variables, enabling fast and accurate computing.
+This framework is particularly effective for characterizing recurrent Gaussian processes. In the last section, we show the use of our framework via three microscopy applications: determining the type of motion of a particle, modeling time-dependent changes in FRET efficiency, and detecting confinement between two particles.
