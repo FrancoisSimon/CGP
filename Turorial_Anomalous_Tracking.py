@@ -6,7 +6,9 @@ Created on Fri Jan 24 11:57:40 2025
 
 Example of algorithm that uses the CGP framework to build a tracking model that can consider a mixture 
 of recurrent processes where each process represents the motion of a track that can be either directed 
-or confined similarly to (https://doi.org/10.7554/eLife.99347.1).
+or confined similarly to (https://doi.org/10.7554/eLife.99347.1). This encodes for a model-based approach
+of CGP as the constrain function fully describes the physics of the model but the constrain function can
+also include more degrees of freedom (see the end of the script for an example).
 """
 
 import numpy as np
@@ -25,8 +27,7 @@ dtype = 'float64'
 def constraint_function(all_params, all_initial_params, dtype):
     '''
     Here, we define a constrain function that link the tensorflow model parameters to the recurrent Gaussian processes
-    In this model, we assum that particles can be either directed (negative params[2]) or confined (positive params[2]).
-    
+    In this model, we assume that particles can be either directed (negative params[2]) or confined (positive params[2]).
     '''
     print(all_params)
     nb_states = all_params.shape[0]
@@ -143,9 +144,9 @@ q = 0.01 # change of the anomalous factor
 
 nb_states = 1 # Number of mutually exclusive states assumed by the model (mixture of Gaussian processes). This number can be increased to consider 2 or more states.
 '''
-THen `all_params` and `all_initial_params` inform the initial parameters for each state (columns)
+Then `all_params` and `all_initial_params` inform the initial parameters for each state (columns)
 params: (localization error, diffusion length, anomalous factor, evolution rate of the anomalous variable)
-Add columns so the number of states equal the number of columns.
+Add rows so the number of states equal the number of rows.
 '''
 all_params = tf.constant([[loc_err, d, l, q]], dtype = dtype) 
 all_initial_params = tf.constant([[10, 0.01]], dtype = dtype)
@@ -242,3 +243,60 @@ all_tracks, all_states = anomalous_diff_mixture(track_len=track_len,
                            nb_sub_steps = 10,
                            field_of_view = np.array([10,10]))
 '''
+
+'''
+We can use CGP in a data driven fashion by allowing more degrees of freedom than the physics-based approach
+all_params = tf.constant([[a, b, c, d, e, f, g]], dtype = dtype) 
+all_initial_params = tf.constant([[h, g, k]], dtype = dtype)
+The following constrain function for instance can model both directed and confined models with one set of parameters
+
+@tf.function
+def constraint_function(all_params, all_initial_params, dtype):
+    '''
+    Here, we define a constrain function that link the tensorflow model parameters to the recurrent Gaussian processes
+    In this model, we assume that particles can be either directed (negative params[2]) or confined (positive params[2]).
+    '''
+    print(all_params)
+    nb_states = all_params.shape[0]
+    print('nb_states', nb_states)
+
+    hidden_vars=[]
+    obs_vars=[]
+    initial_hidden_vars=[]
+
+    for k in range(nb_states):
+        params = all_params[k]
+        initial_params = all_initial_params[k]
+    
+        a, b, c, d, e, f, g = params
+        h, j, k = initial_params
+        
+        # hidden vars:                               pos_x,   ano_pos_x,     pos_x,  ano_pos_x,
+        hidden_vars = hidden_vars + [tf.stack([[[[         a,         0,         0,          0]]],                   # Localization error     
+                                               [[[         b,         c,         d,          0]]],                # Diffusion + anomalous drift
+                                               [[[         0,         e,         0,          f]]]])]                    # Diffusion of the anomalous position
+        
+        obs_vars = obs_vars + [tf.stack([[[[g]]],
+                                         [[[0]]],
+                                         [[[0]]]])]
+            
+        # It is important to have the same number of Gaussians and variables, to do so we need to add nb_hidden_vars Gaussians either at the beginning of the recurrence or at the end
+        # hidden vars:                     pos_x, pos_y, ano_pos_x, ano_pos_y,  pos_x, pos_y, ano_pos_x,ano_pos_y 
+                    
+        initial_hidden_vars = initial_hidden_vars + [tf.stack([[[[      h,      0]]],
+                                                               [[[      j,      k]]]])]
+            
+    Gaussian_stds = tf.ones((nb_obs_vars + nb_hidden_vars, 1, nb_states, 1), dtype = dtype)
+    biases = tf.zeros((nb_obs_vars + nb_hidden_vars, 1, nb_states), dtype = dtype)
+    initial_obs_vars = tf.zeros((nb_hidden_vars, 1, nb_states, nb_obs_vars), dtype = dtype)
+    initial_Gaussian_stds = tf.ones((nb_hidden_vars, 1, nb_states, 1), dtype = dtype)
+    initial_biases = tf.zeros((nb_hidden_vars, 1, nb_states), dtype = dtype)
+        
+    hidden_vars = tf.concat(hidden_vars, 2)
+    obs_vars = tf.concat(obs_vars, 2)
+    initial_hidden_vars = tf.concat(initial_hidden_vars, 2)
+    
+    return hidden_vars, obs_vars, Gaussian_stds, biases, initial_hidden_vars, initial_obs_vars, initial_Gaussian_stds, initial_biases
+'''
+
+
