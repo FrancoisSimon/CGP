@@ -605,7 +605,8 @@ class Initial_layer_constraints(tf.keras.layers.Layer):
         nb_hidden_vars = self.nb_hidden_vars
         dtype = self.dtype
         constraint_function = self.constraint_function
-        
+        nb_states = self.nb_states
+
         param_vars = self.param_vars
         initial_param_vars = self.initial_param_vars
         #param_vars = tf.clip_by_value(self.param_vars, clip_value_min= 0.00000001, clip_value_max=np.inf)
