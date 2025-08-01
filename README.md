@@ -7,6 +7,13 @@ This framework is particularly effective for characterizing recurrent Gaussian p
 
 ## Installation
 
+This library was tested on python version 3.9 with tensorflow 2.10. Other distributions might not work.
+### Creating a compatible environment with anaconda on windows (anaconda prompt)
+
+`conda create --name cgp_env python=3.9
+activate cgp_env
+python -m pip install "tensorflow<2.11"`
+
 Download the github repository, decompress to the destination of your choice and set the working directory to the folder called `CGP`. Run the file `Turorial_Anomalous_Tracking.py` to verify that the framework is working.
 
 ## Principle
