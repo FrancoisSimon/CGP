@@ -76,6 +76,6 @@ def anomalous_diff_mixture(track_len=640,
             final_tracks = typed.List([final_track])
         else:
             final_tracks.append(final_track)
-    return np.array(final_tracks), np.array(all_states)
+    return final_tracks, all_states
 
 
