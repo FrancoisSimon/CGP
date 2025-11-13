@@ -37,6 +37,7 @@ def norm_log_gaussian(top):
 
 #np.any(np.array([100] + list(np.random.normal(0, 1e-100, 10000000)))==0)
 
+@tf.function(jit_compile=True)
 def RNN_gaussian_product(current_hidden_var_coefs_1, current_hidden_var_coefs_2, next_hidden_var_coefs_1, next_hidden_var_coefs_2, biases_1, biases_2, coef_index):
     C1 = current_hidden_var_coefs_1[:,:, coef_index:coef_index+1] + tf.random.normal([1,1,1], 0, 1e-20, dtype = dtype)
     C2 = current_hidden_var_coefs_2[:,:, coef_index:coef_index+1] + tf.random.normal([1,1,1], 0, 1e-20, dtype = dtype)
@@ -52,8 +53,8 @@ def RNN_gaussian_product(current_hidden_var_coefs_1, current_hidden_var_coefs_2,
     
     next_coefs1 = tf.math.divide_no_nan(next_hidden_var_coefs_1, C1)
     next_coefs2 = tf.math.divide_no_nan(next_hidden_var_coefs_2, C2)
-    biases1 = tf.math.divide_no_nan(biases_1, C1[:,:,0])
-    biases2 = tf.math.divide_no_nan(biases_2, C2[:,:,0])
+    biases1 = tf.math.divide_no_nan(biases_1, C1)
+    biases2 = tf.math.divide_no_nan(biases_2, C2)
     
     var1 = 1./(C1**2 + tf.random.normal([1,1,1], 0, 1e-100, dtype = dtype))
     var2 = 1./(C2**2 + tf.random.normal([1,1,1], 0, 1e-100, dtype = dtype))
@@ -62,14 +63,14 @@ def RNN_gaussian_product(current_hidden_var_coefs_1, current_hidden_var_coefs_2,
     std3 = var3**0.5
     current_coefs3 = (current_coefs1 - current_coefs2) / std3
     next_coefs3 = (next_coefs1 - next_coefs2) / std3
-    biases3 = (biases1 - biases2)/std3[:,:,0]
+    biases3 = (biases1 - biases2)/std3
     
     var4 = var1 * var2 / var3
     std4 = var4**0.5
     current_coefs4 = (current_coefs1*var2 + current_coefs2*var1)/(var3*std4)
     next_coefs4 = (next_coefs1*var2 + next_coefs2*var1)/(var3*std4)
     
-    biases4 = (biases1*var2[:,:,0] + biases2*var1[:,:,0])/(var3*std4)[:,:,0]
+    biases4 = (biases1*var2 + biases2*var1)/(var3*std4)
     
     LogConstant = -tf.math.log(tf.math.abs(C1*C2*std4*std3))[:,:,0]
     return LogConstant, current_coefs3, current_coefs4, next_coefs3, next_coefs4, biases3, biases4
@@ -129,7 +130,7 @@ def RNN_gaussian_product(current_hidden_var_coefs_1, current_hidden_var_coefs_2,
 #kept_next_hidden_var_coefs = kept_next_hidden_var_coefs_cp
 #kept_biases = kept_biases_cp
 
-#@tf.function(jit_compile=True)
+@tf.function(jit_compile=True)
 def intermediate_RNN_function(current_hidden_var_coefs, next_hidden_var_coefs, biases, coef_index, ID_1, ID_2, nb_hidden_variables, LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases):
     
     current_hidden_var_coefs_cp = tf.unstack(current_hidden_var_coefs)
@@ -151,7 +152,7 @@ def intermediate_RNN_function(current_hidden_var_coefs, next_hidden_var_coefs, b
     
     return tf.stack(current_hidden_var_coefs_cp), tf.stack(next_hidden_var_coefs_cp), tf.stack(biases_cp), LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases
 
-#@tf.function(jit_compile=True)
+@tf.function(jit_compile=True, reduce_retracing=True)
 def final_RNN_function_phase_1(current_hidden_var_coefs, next_hidden_var_coefs, biases, coef_index, ID_1, ID_2, nb_hidden_variables, LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases):
     
     current_hidden_var_coefs_cp, next_hidden_var_coefs_cp, biases_cp, LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases = intermediate_RNN_function(current_hidden_var_coefs, next_hidden_var_coefs, biases, coef_index, ID_1, ID_2, nb_hidden_variables, LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases)
@@ -170,9 +171,10 @@ def final_RNN_function_phase_1(current_hidden_var_coefs, next_hidden_var_coefs, 
     
     return tf.stack(current_hidden_var_coefs_cp), tf.stack(next_hidden_var_coefs_cp), tf.stack(biases_cp), LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases
 
-#@tf.function(jit_compile=True)
+@tf.function(jit_compile=True, reduce_retracing=True)
 def no_RNN_function_phase_1(current_hidden_var_coefs, next_hidden_var_coefs, biases, coef_index, ID_1, ID_2, nb_hidden_variables, LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases):
-    
+    #kept_next_hidden_var_coefs = kept_next_hidden_var_coefs_cp
+    #kept_biases = kept_biases_cp
     current_hidden_var_coefs_cp = tf.unstack(current_hidden_var_coefs)
     next_hidden_var_coefs_cp = tf.unstack(next_hidden_var_coefs)
     biases_cp = tf.unstack(biases)
@@ -185,9 +187,9 @@ def no_RNN_function_phase_1(current_hidden_var_coefs, next_hidden_var_coefs, bia
     
     nb_gaussians += -1
     
-    return tf.stack(current_hidden_var_coefs_cp), tf.stack(next_hidden_var_coefs_cp), tf.stack(biases_cp), LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases
+    return tf.stack(current_hidden_var_coefs_cp), tf.stack(next_hidden_var_coefs_cp), tf.reshape(tf.stack(biases_cp), (len(biases_cp), biases.shape[1], biases.shape[2], biases.shape[3])), LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases
 
-#@tf.function(jit_compile=True)
+@tf.function(jit_compile=True, reduce_retracing=True)
 def final_RNN_function_phase_2(next_hidden_var_coefs, current_hidden_var_coefs, biases, coef_index, ID_1, ID_2, nb_hidden_variables, LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases):
     
     next_hidden_var_coefs_cp, current_hidden_var_coefs_cp, biases_cp, LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases = intermediate_RNN_function(next_hidden_var_coefs, current_hidden_var_coefs, biases, coef_index, ID_1, ID_2, nb_hidden_variables, LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases)
@@ -213,7 +215,7 @@ def final_RNN_function_phase_2(next_hidden_var_coefs, current_hidden_var_coefs, 
 
 #np.max(current_hidden_var_coefs_cp)
 
-#@tf.function(jit_compile=True)
+@tf.function(jit_compile=True, reduce_retracing=True)
 def no_RNN_function_phase_2(next_hidden_var_coefs, current_hidden_var_coefs, biases, coef_index, ID_1, ID_2, nb_hidden_variables, LC, nb_gaussians, kept_next_hidden_var_coefs, kept_biases):
     
     next_hidden_var_coefs_cp = tf.unstack(next_hidden_var_coefs)
@@ -233,7 +235,7 @@ def no_RNN_function_phase_2(next_hidden_var_coefs, current_hidden_var_coefs, bia
     return tf.stack(next_hidden_var_coefs_cp), current_hidden_var_coefs, tf.stack(biases_cp), LC, nb_gaussians, tf.stack(kept_next_hidden_var_coefs_cp), tf.stack(kept_biases_cp)
 
 
-#@tf.function(jit_compile=True)
+@tf.function(jit_compile=False, reduce_retracing=True)
 def RNN_reccurence_formula(current_hidden_var_coefs, # coefficients of the hidden variables that are updated
                            next_hidden_var_coefs,
                            biases,
@@ -251,7 +253,7 @@ def RNN_reccurence_formula(current_hidden_var_coefs, # coefficients of the hidde
     
     kept_next_hidden_var_coefs_cp, kept_biases_cp = [[],[]]
     
-    nb_gaussians = len(biases_cp)
+    nb_gaussians = biases_cp.shape[0]
     
     nb_hidden_variables = current_hidden_var_coefs_cp[0].shape[-1]
     
@@ -260,14 +262,15 @@ def RNN_reccurence_formula(current_hidden_var_coefs, # coefficients of the hidde
     #print('LC1',LC)
     for f, s in zip(sequence_phase_1[0], sequence_phase_1[1]):
         print('1...')
+        
         coef_index, ID_1, ID_2 = s
         current_hidden_var_coefs_cp, next_hidden_var_coefs_cp, biases_cp, LC, nb_gaussians, kept_next_hidden_var_coefs_cp, kept_biases_cp = f(current_hidden_var_coefs_cp, next_hidden_var_coefs_cp, biases_cp, coef_index, ID_1, ID_2, nb_hidden_variables, LC, nb_gaussians, kept_next_hidden_var_coefs_cp, kept_biases_cp)
-        tf.debugging.check_numerics(current_hidden_var_coefs_cp, "current_hidden_var_coefs_cp has NaN or Inf")
-        tf.debugging.check_numerics(next_hidden_var_coefs_cp, "next_hidden_var_coefs_cp has NaN or Inf")
-        tf.debugging.check_numerics(biases_cp, "biases_cp has NaN or Inf")
-        tf.debugging.check_numerics(LC, "LC has NaN or Inf")
-        tf.debugging.check_numerics(kept_next_hidden_var_coefs_cp, "kept_next_hidden_var_coefs_cp has NaN or Inf")
-        tf.debugging.check_numerics(kept_biases_cp, "kept_biases_cp has NaN or Inf")
+        #tf.debugging.check_numerics(current_hidden_var_coefs_cp, "current_hidden_var_coefs_cp has NaN or Inf")
+        #tf.debugging.check_numerics(next_hidden_var_coefs_cp, "next_hidden_var_coefs_cp has NaN or Inf")
+        #tf.debugging.check_numerics(biases_cp, "biases_cp has NaN or Inf")
+        #tf.debugging.check_numerics(LC, "LC has NaN or Inf")
+        #tf.debugging.check_numerics(kept_next_hidden_var_coefs_cp, "kept_next_hidden_var_coefs_cp has NaN or Inf")
+        #tf.debugging.check_numerics(kept_biases_cp, "kept_biases_cp has NaN or Inf")
 
     #print('remove LC', LC)
     #print('LC2',LC)
@@ -287,17 +290,17 @@ def RNN_reccurence_formula(current_hidden_var_coefs, # coefficients of the hidde
         print('2...')
         coef_index, ID_1, ID_2 = s
         next_hidden_var_coefs_cp, current_hidden_var_coefs_cp, biases_cp, LC, nb_gaussians, kept_next_hidden_var_coefs_cp, kept_biases_cp = f(next_hidden_var_coefs_cp, current_hidden_var_coefs_cp, biases_cp, coef_index, ID_1, ID_2, nb_hidden_variables, LC, nb_gaussians, kept_next_hidden_var_coefs_cp, kept_biases_cp)
-        tf.debugging.check_numerics(current_hidden_var_coefs_cp, "current_hidden_var_coefs_cp has NaN or Inf")
-        tf.debugging.check_numerics(next_hidden_var_coefs_cp, "next_hidden_var_coefs_cp has NaN or Inf")
-        tf.debugging.check_numerics(biases_cp, "biases_cp has NaN or Inf")
-        tf.debugging.check_numerics(LC, "LC has NaN or Inf")
-        tf.debugging.check_numerics(kept_next_hidden_var_coefs_cp, "kept_next_hidden_var_coefs_cp has NaN or Inf")
-        tf.debugging.check_numerics(kept_biases_cp, "kept_biases_cp has NaN or Inf")
-        
+        #tf.debugging.check_numerics(current_hidden_var_coefs_cp, "current_hidden_var_coefs_cp has NaN or Inf")
+        #tf.debugging.check_numerics(next_hidden_var_coefs_cp, "next_hidden_var_coefs_cp has NaN or Inf")
+        #tf.debugging.check_numerics(biases_cp, "biases_cp has NaN or Inf")
+        #tf.debugging.check_numerics(LC, "LC has NaN or Inf")
+        #tf.debugging.check_numerics(kept_next_hidden_var_coefs_cp, "kept_next_hidden_var_coefs_cp has NaN or Inf")
+        #tf.debugging.check_numerics(kept_biases_cp, "kept_biases_cp has NaN or Inf")
+    
     new_LCs = norm_log_gaussian(tf.cast(tf.stack(biases_cp), dtype = dtype))
     
-    LC += tf.math.reduce_sum(new_LCs, 0)
-    
+    LC += tf.math.reduce_sum(new_LCs, (0, 3))
+    LC.shape
     #Next_coefs = tf.reshape(Next_coefs, [next_nb_gaussians] + shape)
     #Next_biases = tf.reshape(Next_biases, [next_nb_gaussians] + shape[:-1])
     Next_coefs = tf.stack(kept_next_hidden_var_coefs_cp)
@@ -412,7 +415,6 @@ class Initial_layer(tf.keras.layers.Layer):
         #LF = - tf.math.reduce_sum(tf.math.log(Gaussian_stds), 0)[:,:,0] + tf.math.log(tf.math.abs(tf.linalg.det(Mat)))#+ tf.math.reduce_sum(tf.math.log(tf.abs(self.hidden_var_coef_values)))
         #Log_factors = - tf.math.reduce_sum(tf.math.log(Gaussian_stds), 0)[:,:,0] #+ tf.math.log(tf.math.abs(tf.linalg.det(Mat)))#+ tf.math.reduce_sum(tf.math.log(tf.abs(self.hidden_var_coef_values)))
         #print('Simple log factor', Log_factors)
-        
         
         #print('hidden_var_coefs', hidden_var_coefs)
         # change of variables to deal with gaussians of variance 1
@@ -592,8 +594,8 @@ class Initial_layer_constraints(tf.keras.layers.Layer):
         initial_param_vars = tf.Variable(initial_params,  dtype = dtype, name = 'initial_variables', constraint=lambda w: tf.where(tf.greater_equal(w, 0), w, 0.0000001))
         initial_fractions = tf.Variable((np.random.rand(1, nb_states)+0.5)/nb_states, dtype = dtype, name = 'Fractions', trainable = True)
         '''
-        self.param_vars = tf.Variable(self.params,  dtype = dtype, name = 'recurrence_variables', constraint=lambda w: tf.where(tf.greater_equal(w, -1), w, 0.0000001))
-        self.initial_param_vars = tf.Variable(self.initial_params,  dtype = dtype, name = 'initial_variables', constraint=lambda w: tf.where(tf.greater_equal(w, 0), w, 0.0000001))
+        self.param_vars = tf.Variable(self.params,  dtype = dtype, name = 'recurrence_variables', constraint=lambda w: tf.where(tf.greater_equal(w, -1), w, 0.0000001), trainable = True)
+        self.initial_param_vars = tf.Variable(self.initial_params,  dtype = dtype, name = 'initial_variables', constraint=lambda w: tf.where(tf.greater_equal(w, 0), w, 0.0000001), trainable = True)
         self.initial_fractions = tf.Variable((np.random.rand(1, nb_states)+0.5)/nb_states, dtype = dtype, name = 'Fractions', trainable = True)
         
     def call(self, inputs):
@@ -613,14 +615,14 @@ class Initial_layer_constraints(tf.keras.layers.Layer):
         #initial_param_vars = tf.clip_by_value(self.initial_param_vars, clip_value_min= 0.00000001, clip_value_max=np.inf)
         
         hidden_var_coefs, obs_var_coefs, Gaussian_stds, biases, initial_hidden_var_coefs, initial_obs_var_coefs, initial_Gaussian_stds, initial_biases = constraint_function(param_vars, initial_param_vars, dtype)
-            
-        hidden_var_coefs = hidden_var_coefs/Gaussian_stds
-        obs_var_coefs = obs_var_coefs/Gaussian_stds
-        biases = biases/Gaussian_stds[:,:,:,0]
         
-        obs_var_coefs = tf.repeat(obs_var_coefs, nb_tracks, 1)
-        hidden_var_coefs = tf.repeat(hidden_var_coefs, nb_tracks, 1)
-        biases = tf.repeat(biases, nb_tracks, 1)
+        hidden_var_coefs = hidden_var_coefs/Gaussian_stds
+        obs_var_coefs = obs_var_coefs/Gaussian_stds[:,:,:,:,None]
+        biases = biases/Gaussian_stds
+        
+        #obs_var_coefs = tf.repeat(obs_var_coefs, nb_tracks, 1)
+        #hidden_var_coefs = tf.repeat(hidden_var_coefs, nb_tracks, 1)
+        #biases = tf.repeat(biases, nb_tracks, 1)
         
         current_hidden_var_coefs = hidden_var_coefs[:,:,:,:nb_hidden_vars]
         next_hidden_var_coefs = hidden_var_coefs[:,:,:,nb_hidden_vars:]
@@ -633,20 +635,20 @@ class Initial_layer_constraints(tf.keras.layers.Layer):
         #print('hidden_var_coefs', hidden_var_coefs)
         # change of variables to deal with gaussians of variance 1
         initial_hidden_var_coefs = initial_hidden_var_coefs/initial_Gaussian_stds
-        initial_obs_var_coefs = initial_obs_var_coefs/initial_Gaussian_stds
-        initial_biases = initial_biases/initial_Gaussian_stds[:,:,:,0]
+        initial_obs_var_coefs = initial_obs_var_coefs/initial_Gaussian_stds[:,:,:,:,None]
+        initial_biases = initial_biases/initial_Gaussian_stds
         #self.nb_gaussians += initial_hidden_var_coefs.shape[0]
         
-        initial_obs_var_coefs = tf.repeat(initial_obs_var_coefs, nb_tracks, 1)
-        initial_hidden_var_coefs = tf.repeat(initial_hidden_var_coefs, nb_tracks, 1)
-        initial_biases = tf.repeat(initial_biases, nb_tracks, 1)
+        #initial_obs_var_coefs = tf.repeat(initial_obs_var_coefs, nb_tracks, 1)
+        #initial_hidden_var_coefs = tf.repeat(initial_hidden_var_coefs, nb_tracks, 1)
+        #initial_biases = tf.repeat(initial_biases, nb_tracks, 1)
         
         current_initial_hidden_var_coefs = initial_hidden_var_coefs[:,:,:,:nb_hidden_vars]
-        next_initial_hidden_var_coefs = tf.zeros((nb_hidden_vars, nb_tracks, nb_states, nb_hidden_vars), dtype = dtype)  # these coefs must equal 0 as the initial gaussians must only depend on the fist set of hidden states
+        next_initial_hidden_var_coefs = tf.zeros((nb_hidden_vars, 1, nb_states, nb_hidden_vars), dtype = dtype)  # these coefs must equal 0 as the initial gaussians must only depend on the fist set of hidden states
         
         #print(obs_var_coefs, inputs, biases)
-        biases += tf.reduce_sum(obs_var_coefs * inputs[0], -1)
-        initial_biases += tf.reduce_sum(initial_obs_var_coefs * inputs[0], -1)
+        biases += tf.reduce_sum(obs_var_coefs * inputs[0], -2)
+        initial_biases += tf.reduce_sum(initial_obs_var_coefs * inputs[0], -2)
         
         #print('inputs[0]', inputs[0])
         #hidden_var_coefs = list(hidden_var_coefs)
@@ -747,10 +749,10 @@ class Initial_layer_constraints(tf.keras.layers.Layer):
         nb_obs_vars = self.nb_obs_vars
         dtype = self.dtype
         #total_nb_vars = N*(nb_hidden_vars + nb_obs_vars) + nb_hidden_vars
-    
-        init_obs_vars = initial_obs_var_coefs[:,0]
+        
+        init_obs_vars = initial_obs_var_coefs[:,0, :,:,0]
         init_hidden_vars = initial_hidden_var_coefs[:,0]
-        obs_vars = obs_var_coefs[:,0]
+        obs_vars = obs_var_coefs[:,0, :,:,0]
         hidden_vars = hidden_var_coefs[:,0]
         init_obs_zeros = tf.zeros(init_obs_vars.shape, dtype = dtype)
         init_hidden_zeros = tf.zeros((init_hidden_vars.shape[0], init_hidden_vars.shape[1], nb_hidden_vars), dtype = dtype)
@@ -793,76 +795,16 @@ class Initial_layer_constraints(tf.keras.layers.Layer):
         return initial_Log_factors, Log_factors
 
 
-# input_i = sliced_inputs[0]
-
-class Custom_Integration_layer(tf.keras.layers.Layer):
-   
-    def __init__(self, sequence_phase_1, sequence_phase_2, **kwargs):
-        self.sequence_phase_1 = sequence_phase_1
-        self.sequence_phase_2 = sequence_phase_2
-        #self.parent = parent
-        #self.constraints = positive_Constrain()
-        super().__init__(**kwargs)
-   
-    def build(self, input_shape):
-        self.built = True
-        
-    def call(self, input_i, states): # inputs = current positions, states = outputs of the previous layer, needs to be initialized correctly
-        
-        Prev_coefs, Prev_biases, LP, Log_factors, reccurent_obs_var_coefs, reccurent_hidden_var_coefs, reccurent_next_hidden_var_coefs, reccurent_biases = states
-        #Prev_coefs[np.arange(2)]
-        #print('LP', LP)
-        
-        current_hidden_var_coefs = tf.unstack(Prev_coefs) + tf.unstack(tf.identity(reccurent_hidden_var_coefs))
-        zero_tensor = tf.unstack(tf.constant(0, dtype = dtype, shape = Prev_coefs.shape))
-        next_hidden_var_coefs = zero_tensor + tf.unstack(tf.identity(reccurent_next_hidden_var_coefs))
-        #biases = list(Prev_biases) + list(tf.identity(reccurent_biases))
-        obs_var_coefs = tf.identity(reccurent_obs_var_coefs)
-        current_biases = tf.identity(reccurent_biases)
-        current_biases += tf.reduce_sum(obs_var_coefs * input_i, -1)
-
-        biases = tf.unstack(tf.concat((Prev_biases, current_biases), 0))
-        #nb_gaussians = len(biases)
-        
-        #print('current_hidden_var_coefs', current_hidden_var_coefs)
-        #print('next_hidden_var_coefs', next_hidden_var_coefs)
-        #print('biases', biases)
-
-        Next_coefs, Next_biases, LC = RNN_reccurence_formula(current_hidden_var_coefs, # coefficients of the hidden variables that are updated
-                                                             next_hidden_var_coefs,
-                                                             biases,
-                                                             self.sequence_phase_1,
-                                                             self.sequence_phase_2,
-                                                             #dependent_variables, # bool array that memorized if coefficients are non-nul 
-                                                             #nb_hidden_vars, # number of hidden variables to integrate during this step
-                                                             #nb_gaussians, # number of gaussians, must equal hidden_vars_coefs.shape[0]
-                                                             dtype = self.dtype)
-        
-        LP += LC + Log_factors
-        
-        #print(LP)
-        #output = [Next_coefs, Next_biases, LP, Log_factors, reccurent_hidden_var_coefs, reccurent_next_hidden_var_coefs, reccurent_biases]
-        #print('Next_coefs', tf.stack(Next_coefs))
-        output = [tf.stack(Next_coefs), tf.stack(Next_biases), LP, Log_factors, reccurent_obs_var_coefs, reccurent_hidden_var_coefs, reccurent_next_hidden_var_coefs, reccurent_biases]
-        
-        output_shapes = [cur_state.shape for cur_state in output]
-        print('output_shapes', output_shapes)
-        #print('inputs', states)
-        #print('outputs', output)
-        
-        return output
-
-@tf.function(jit_compile=True)
+@tf.function(jit_compile=True, reduce_retracing=True)
 def RNN_cell(input_i, Prev_coefs, Prev_biases, LP, Log_factors, reccurent_obs_var_coefs, reccurent_hidden_var_coefs, reccurent_next_hidden_var_coefs, reccurent_biases, sequence_phase_1, sequence_phase_2):
-
+    
     current_hidden_var_coefs = tf.concat((Prev_coefs, tf.identity(reccurent_hidden_var_coefs)), axis = 0)
     zero_tensor = tf.constant(0, dtype = dtype, shape = Prev_coefs.shape)
     next_hidden_var_coefs = tf.concat((zero_tensor, tf.identity(reccurent_next_hidden_var_coefs)), axis = 0)
     #biases = list(Prev_biases) + list(tf.identity(reccurent_biases))
     
     current_biases = tf.identity(reccurent_biases)
-    current_biases += tf.reduce_sum(reccurent_obs_var_coefs * input_i, -1)
-    
+    current_biases += tf.reduce_sum(reccurent_obs_var_coefs * input_i, -2)
     biases = tf.concat((Prev_biases, current_biases), axis =  0)
     
     #nb_gaussians = len(biases)
@@ -880,13 +822,13 @@ def RNN_cell(input_i, Prev_coefs, Prev_biases, LP, Log_factors, reccurent_obs_va
                                                          #nb_hidden_vars, # number of hidden variables to integrate during this step
                                                          #nb_gaussians, # number of gaussians, must equal hidden_vars_coefs.shape[0]
                                                          dtype = dtype)
-        
+    
     LP += LC + Log_factors
     
     return Next_coefs, Next_biases, LP
 
 class Custom_RNN_layer(tf.keras.layers.Layer):
-   
+    
     def __init__(self, sequence_phase_1, sequence_phase_2, **kwargs):
         self.sequence_phase_1 = sequence_phase_1
         self.sequence_phase_2 = sequence_phase_2
@@ -903,11 +845,11 @@ class Custom_RNN_layer(tf.keras.layers.Layer):
         
         sequence_phase_1 = self.sequence_phase_1
         sequence_phase_2 = self.sequence_phase_2
-                
+        
         for input_i in inputs:
             #Prev_coefs, Prev_biases, LP, Log_factors, reccurent_obs_var_coefs, reccurent_hidden_var_coefs, reccurent_next_hidden_var_coefs, reccurent_biases = states
             Prev_coefs, Prev_biases, LP = RNN_cell(input_i, Prev_coefs, Prev_biases, LP, Log_factors, reccurent_obs_var_coefs, reccurent_hidden_var_coefs, reccurent_next_hidden_var_coefs, reccurent_biases, sequence_phase_1, sequence_phase_2)
-            
+            Prev_coefs
             #print(LP)
             #output = [Next_coefs, Next_biases, LP, Log_factors, reccurent_hidden_var_coefs, reccurent_next_hidden_var_coefs, reccurent_biases]
             #print('Next_coefs', tf.stack(Next_coefs))
@@ -944,14 +886,14 @@ class Custom_RNNCell(tf.keras.layers.Layer):
         sequence_phase_1 = self.sequence_phase_1
         sequence_phase_2 = self.sequence_phase_2
         dtype = self.dtype
-    
+        
         Prev_coefs, Prev_biases, LP, Log_factors, reccurent_obs_var_coefs, reccurent_hidden_var_coefs, reccurent_next_hidden_var_coefs, reccurent_biases = states
         
         current_hidden_var_coefs = tf.concat((Prev_coefs, tf.identity(reccurent_hidden_var_coefs)), axis = 0)
         zero_tensor = tf.constant(0, dtype = dtype, shape = Prev_coefs.shape)
         next_hidden_var_coefs = tf.concat((zero_tensor, tf.identity(reccurent_next_hidden_var_coefs)), axis = 0)
         #biases = list(Prev_biases) + list(tf.identity(reccurent_biases))
-
+        
         current_biases = tf.identity(reccurent_biases)
         #current_biases += tf.reduce_sum(reccurent_obs_var_coefs * input_i, -1)
         current_biases += check_error(reccurent_obs_var_coefs, input_i)
@@ -1001,7 +943,10 @@ class Final_layer(tf.keras.layers.Layer):
             next_hidden_var_coefs = zero_tensor
             
             biases = Prev_biases
-            
+            '''
+            sequence_phase_1 = self.sequence_phase_1
+            sequence_phase_2 = [[], []]
+            '''
             Next_coefs, Next_biases, LC = RNN_reccurence_formula(current_hidden_var_coefs, # coefficients of the hidden variables that are updated
                                                                  next_hidden_var_coefs,
                                                                  biases,
@@ -1071,7 +1016,7 @@ def simple_RNN_gaussian_product(C1, C2, current_hidden_var_coefs_1, current_hidd
     
     return current_coefs3, current_coefs4, next_coefs3, next_coefs4
 
-def get_sequences(params, initial_params, constraint_function, nb_gaussians, nb_hidden_vars, nb_states, dtype):
+def get_sequences(all_params, all_initial_params, constraint_function, nb_gaussians, nb_hidden_vars, nb_states, dtype):
     '''
     Function that get the sequences of indexes to eliminate the coefficents and perform the recursive integration process
     
@@ -1088,7 +1033,7 @@ def get_sequences(params, initial_params, constraint_function, nb_gaussians, nb_
     [final_functions_phase_1, np.array(final_sequence_phase_1, dtype = 'int32')] : sequence to apply for the phase 1 of the recurrence step, the last step has no phase 2
     '''
     
-    hidden_var_coefs, _, _, _, initial_hidden_var_coefs, _, _, _ = constraint_function(params, initial_params, dtype)
+    hidden_var_coefs, _, _, _, initial_hidden_var_coefs, _, _, _ = constraint_function(all_params, all_initial_params, dtype)
     
     recurrent_current_hidden_var_coefs = np.copy(hidden_var_coefs[:,0,0,:nb_hidden_vars])
     recurrent_next_hidden_var_coefs = np.copy(hidden_var_coefs[:,0,0,nb_hidden_vars:])
@@ -1160,11 +1105,11 @@ def get_sequences(params, initial_params, constraint_function, nb_gaussians, nb_
     
     initial_sequence_phase_2 = []
     initial_functions_phase_2 = []
-
+    
     saved_Gaussians = np.zeros((nb_hidden_vars, nb_hidden_vars))
     # contrary to the integration step, we cannot remove Gaussians. Instead, we will save them to solve the linear problem
     for coef_index in range(nb_hidden_vars):
-
+        
         non_zero_gaussian_IDs = []
         for Gaussian_ID in range(current_nb_gaussians):
             Coef = next_hidden_var_coefs[Gaussian_ID,coef_index]
@@ -1172,8 +1117,6 @@ def get_sequences(params, initial_params, constraint_function, nb_gaussians, nb_
                 non_zero_gaussian_IDs.append(Gaussian_ID)
 
         for i in range(len(non_zero_gaussian_IDs)-1):
-            print(i)
-            
             
             ID_1 = non_zero_gaussian_IDs[i]
             ID_2 = non_zero_gaussian_IDs[i+1]
@@ -1187,12 +1130,327 @@ def get_sequences(params, initial_params, constraint_function, nb_gaussians, nb_
             current_hidden_var_coefs_2 = next_hidden_var_coefs[ID_2]*0
             next_hidden_var_coefs_1 = next_hidden_var_coefs[ID_1]
             next_hidden_var_coefs_2 = next_hidden_var_coefs[ID_2]
+            
+            current_coefs3, current_coefs4, next_coefs3, next_coefs4 = simple_RNN_gaussian_product(C1, C2, next_hidden_var_coefs_1, next_hidden_var_coefs_2, current_hidden_var_coefs_1, current_hidden_var_coefs_2)
+            
+            next_hidden_var_coefs[ID_1] = current_coefs3
+            next_hidden_var_coefs[ID_2] = current_coefs4
+            
+        if len(non_zero_gaussian_IDs)>1:
+            initial_functions_phase_2[-1] = final_RNN_function_phase_2
+        elif len(non_zero_gaussian_IDs) == 1: # if there is already only one gaussian that depend on 
+            ID_1 = 0
+            ID_2 = non_zero_gaussian_IDs[0]
+            
+            initial_sequence_phase_2.append([coef_index, ID_1, ID_2])
+            initial_functions_phase_2.append(no_RNN_function_phase_2)
+        else: # if next_hidden_var_coefs is independent from the coefficient of index coef_index, nothing happens
+            pass 
+        
+        if len(non_zero_gaussian_IDs) >= 1: 
+            saved_Gaussians[coef_index] = next_hidden_var_coefs[ID_2]
+            next_hidden_var_coefs = np.delete(next_hidden_var_coefs, ID_2, 0)
+            current_nb_gaussians += -1
+    
+    initial_saved_Gaussians = saved_Gaussians
+    
+    # Recurrence step:
+    
+    current_hidden_var_coefs = np.concatenate((saved_Gaussians, recurrent_current_hidden_var_coefs), 0)
+    next_hidden_var_coefs = np.concatenate((saved_Gaussians*0, recurrent_next_hidden_var_coefs), 0)
+    
+    current_nb_gaussians = len(current_hidden_var_coefs)
+    
+    '''
+    recurrence step:
+    '''
+    
+    recurrent_sequence_phase_1 = [] # list of lists containing the sequence of coef_index and gaussian IDs to 
+    recurrent_functions_phase_1 = []
+
+    #print('LC1',LC)
+    for coef_index in range(nb_hidden_vars):
+        non_zero_gaussian_IDs = []
+        for Gaussian_ID in range(current_nb_gaussians):
+            Coef = current_hidden_var_coefs[Gaussian_ID,coef_index]
+            if Coef != 0:
+                non_zero_gaussian_IDs.append(Gaussian_ID)
+        
+        for i in range(len(non_zero_gaussian_IDs)-1):
+            
+            ID_1 = non_zero_gaussian_IDs[i]
+            ID_2 = non_zero_gaussian_IDs[i+1]
+            
+            recurrent_sequence_phase_1.append([coef_index, ID_1, ID_2])
+            recurrent_functions_phase_1.append(intermediate_RNN_function)
+
+            C1 = current_hidden_var_coefs[ID_1, coef_index]
+            C2 = current_hidden_var_coefs[ID_2, coef_index]
+            current_hidden_var_coefs_1 = current_hidden_var_coefs[ID_1]
+            current_hidden_var_coefs_2 = current_hidden_var_coefs[ID_2]
+            next_hidden_var_coefs_1 = next_hidden_var_coefs[ID_1]
+            next_hidden_var_coefs_2 = next_hidden_var_coefs[ID_2]
+
+            current_coefs3, current_coefs4, next_coefs3, next_coefs4 = simple_RNN_gaussian_product(C1, C2, current_hidden_var_coefs_1, current_hidden_var_coefs_2, next_hidden_var_coefs_1, next_hidden_var_coefs_2)
+
+            current_hidden_var_coefs[ID_1] = current_coefs3
+            current_hidden_var_coefs[ID_2] = current_coefs4
+
+            next_hidden_var_coefs[ID_1] = next_coefs3
+            next_hidden_var_coefs[ID_2] = next_coefs4
+        
+        if len(non_zero_gaussian_IDs)>1:
+            recurrent_functions_phase_1[-1] = final_RNN_function_phase_1
+        elif len(non_zero_gaussian_IDs) == 1: # if there is already only one gaussian that depend on 
+            ID_1 = 0
+            ID_2 = non_zero_gaussian_IDs[0]
+            
+            recurrent_sequence_phase_1.append([coef_index, ID_1, ID_2])
+            recurrent_functions_phase_1.append(no_RNN_function_phase_1)
+        else: # if next_hidden_var_coefs is independent from the coefficient of index coef_index, nothing happens
+            pass 
+        
+        if len(non_zero_gaussian_IDs) >= 1: 
+            current_hidden_var_coefs = np.delete(current_hidden_var_coefs, non_zero_gaussian_IDs[-1], 0)
+            next_hidden_var_coefs = np.delete(next_hidden_var_coefs, non_zero_gaussian_IDs[-1], 0)
+            current_nb_gaussians += -1
+    
+    recurrent_sequence_phase_2 = []
+    recurrent_functions_phase_2 = []
+
+    saved_Gaussians = np.zeros((nb_hidden_vars, nb_hidden_vars))
+    # contrary to the integration step, we cannot remove Gaussians. Instead, we will save them to solve the linear problem
+    for coef_index in range(nb_hidden_vars):
+        
+        non_zero_gaussian_IDs = []
+        for Gaussian_ID in range(current_nb_gaussians):
+            Coef = next_hidden_var_coefs[Gaussian_ID,coef_index]
+            if Coef != 0:
+                non_zero_gaussian_IDs.append(Gaussian_ID)
+        
+        for i in range(len(non_zero_gaussian_IDs)-1):
+            
+            ID_1 = non_zero_gaussian_IDs[i]
+            ID_2 = non_zero_gaussian_IDs[i+1]
+            
+            recurrent_sequence_phase_2.append([coef_index, ID_1, ID_2])
+            recurrent_functions_phase_2.append(intermediate_RNN_function)
+
+            C1 = next_hidden_var_coefs[ID_1, coef_index]
+            C2 = next_hidden_var_coefs[ID_2, coef_index]
+            current_hidden_var_coefs_1 = next_hidden_var_coefs[ID_1]*0
+            current_hidden_var_coefs_2 = next_hidden_var_coefs[ID_2]*0
+            next_hidden_var_coefs_1 = next_hidden_var_coefs[ID_1]
+            next_hidden_var_coefs_2 = next_hidden_var_coefs[ID_2]
 
             current_coefs3, current_coefs4, next_coefs3, next_coefs4 = simple_RNN_gaussian_product(C1, C2, next_hidden_var_coefs_1, next_hidden_var_coefs_2, current_hidden_var_coefs_1, current_hidden_var_coefs_2)
 
             next_hidden_var_coefs[ID_1] = current_coefs3
             next_hidden_var_coefs[ID_2] = current_coefs4
         
+        if len(non_zero_gaussian_IDs)>1:
+            recurrent_functions_phase_2[-1] = final_RNN_function_phase_2
+        elif len(non_zero_gaussian_IDs) == 1: # if there is already only one gaussian that depend on 
+            ID_1 = 0
+            ID_2 = non_zero_gaussian_IDs[0]
+            
+            recurrent_sequence_phase_2.append([coef_index, ID_1, ID_2])
+            recurrent_functions_phase_2.append(no_RNN_function_phase_2)
+        else: # if next_hidden_var_coefs is independent from the coefficient of index coef_index, nothing happens
+            pass 
+        
+        if len(non_zero_gaussian_IDs) >= 1: # we remove the last gaussian that depend on the coefficient on index coef_index (only valid if at least on gaussian has a non 0 coefficient)
+            saved_Gaussians[coef_index] = next_hidden_var_coefs[ID_2]
+            next_hidden_var_coefs = np.delete(next_hidden_var_coefs, ID_2, 0)
+            current_nb_gaussians += -1
+            
+    print('Checking that the recurrent next Gaussians have the same form than the initial next gaussians:', np.all((initial_saved_Gaussians == 0) == (saved_Gaussians == 0)))
+    '''
+    Final step
+    Contrary to the previous steps, the final step does not introduce new gaussians that depend on the next hidden variables. 
+    Therefore, we only need to perform the phase 1 on the gaussians that remain from the previous step
+    '''
+    
+    
+    current_hidden_var_coefs = saved_Gaussians
+    current_nb_gaussians = len(current_hidden_var_coefs)
+
+    next_hidden_var_coefs = np.zeros(current_hidden_var_coefs.shape)
+    
+    final_sequence_phase_1 = [] # list of lists containing the sequence of coef_index and gaussian IDs to 
+    final_functions_phase_1 = []
+    
+    #print('LC1',LC)
+    for coef_index in range(nb_hidden_vars):
+        non_zero_gaussian_IDs = []
+        for Gaussian_ID in range(current_nb_gaussians):
+            Coef = current_hidden_var_coefs[Gaussian_ID,coef_index]
+            if Coef != 0:
+                non_zero_gaussian_IDs.append(Gaussian_ID)
+        
+        for i in range(len(non_zero_gaussian_IDs)-1):
+            
+            ID_1 = non_zero_gaussian_IDs[i]
+            ID_2 = non_zero_gaussian_IDs[i+1]
+            
+            final_sequence_phase_1.append([coef_index, ID_1, ID_2])
+            final_functions_phase_1.append(intermediate_RNN_function)
+
+            C1 = current_hidden_var_coefs[ID_1, coef_index]
+            C2 = current_hidden_var_coefs[ID_2, coef_index]
+            current_hidden_var_coefs_1 = current_hidden_var_coefs[ID_1]
+            current_hidden_var_coefs_2 = current_hidden_var_coefs[ID_2]
+            next_hidden_var_coefs_1 = next_hidden_var_coefs[ID_1]
+            next_hidden_var_coefs_2 = next_hidden_var_coefs[ID_2]
+            
+            current_coefs3, current_coefs4, next_coefs3, next_coefs4 = simple_RNN_gaussian_product(C1, C2, current_hidden_var_coefs_1, current_hidden_var_coefs_2, next_hidden_var_coefs_1, next_hidden_var_coefs_2)
+
+            current_hidden_var_coefs[ID_1] = current_coefs3
+            current_hidden_var_coefs[ID_2] = current_coefs4
+
+            next_hidden_var_coefs[ID_1] = next_coefs3
+            next_hidden_var_coefs[ID_2] = next_coefs4
+        
+        if len(non_zero_gaussian_IDs)>1:
+            recurrent_functions_phase_1[-1] = final_RNN_function_phase_1
+        elif len(non_zero_gaussian_IDs) == 1: # if there is already only one gaussian that depend on 
+            ID_1 = 0
+            ID_2 = non_zero_gaussian_IDs[0]
+            
+            final_sequence_phase_1.append([coef_index, ID_1, ID_2])
+            final_functions_phase_1.append(no_RNN_function_phase_1)
+        else: # if next_hidden_var_coefs is independent from the coefficient of index coef_index, nothing happens
+            pass 
+        
+        if len(non_zero_gaussian_IDs) >= 1: 
+            current_hidden_var_coefs = np.delete(current_hidden_var_coefs, non_zero_gaussian_IDs[-1], 0)
+            next_hidden_var_coefs = np.delete(next_hidden_var_coefs, non_zero_gaussian_IDs[-1], 0)
+            current_nb_gaussians += -1
+    
+    #return [initial_functions_phase_1, np.array(initial_sequence_phase_1, dtype = 'int32')], [initial_functions_phase_2, np.array(initial_sequence_phase_2, dtype = 'int32')], [recurrent_functions_phase_1, np.array(recurrent_sequence_phase_1, dtype = 'int32')], [recurrent_functions_phase_2, np.array(recurrent_sequence_phase_2, dtype = 'int32')], [final_functions_phase_1, np.array(final_sequence_phase_1, dtype = 'int32')]
+    return [initial_functions_phase_1, initial_sequence_phase_1], [initial_functions_phase_2, initial_sequence_phase_2], [recurrent_functions_phase_1, recurrent_sequence_phase_1], [recurrent_functions_phase_2, recurrent_sequence_phase_2], [final_functions_phase_1, final_sequence_phase_1]
+
+
+def get_sequences(all_params, all_initial_params, constraint_function, nb_gaussians, nb_hidden_vars, nb_states, dtype):
+    '''
+    Function that get the sequences of indexes to eliminate the coefficents and perform the recursive integration process
+    
+    The integration process for one time step is composed of 2 phases, phase 1: integration over the current hidden variables, phase 2 rearangement of the matrix of the remaining next hidden variables to minimize the number of gaussians that are dependent on the next hidden variables
+    
+    In the process, we need to get 2 sequences (for phases 1 and 2) that specify the operations for the initial step, 2 additional sequences (phases 1 and 2) for the recurrence step and 1 final sequence (phase 1) for the last step.
+    Each sequence must inform about the coefficient to integrate, the gaussian IDs and the function to use.
+    
+    The function then needs to compute and return 6 lists : [initial_functions_phase_1, np.array(initial_sequence_phase_1, dtype = 'int32')], [initial_functions_phase_2, np.array(initial_sequence_phase_2, dtype = 'int32')], [recurrent_functions_phase_1, np.array(recurrent_sequence_phase_1, dtype = 'int32')], [recurrent_functions_phase_2, np.array(recurrent_sequence_phase_2, dtype = 'int32')], [final_functions_phase_1, np.array(final_sequence_phase_1, dtype = 'int32')]
+    [initial_functions_phase_1, np.array(initial_sequence_phase_1, dtype = 'int32')] : sequence to apply for the phase 1 of the inital step
+    [initial_functions_phase_2, np.array(initial_sequence_phase_2, dtype = 'int32')] : sequence to apply for the phase 2 of the inital step
+    [recurrent_functions_phase_1, np.array(recurrent_sequence_phase_1, dtype = 'int32')] : sequence to apply for the phase 1 of the recurrence step
+    [recurrent_functions_phase_2, np.array(recurrent_sequence_phase_2, dtype = 'int32')] : sequence to apply for the phase 2 of the recurrence step
+    [final_functions_phase_1, np.array(final_sequence_phase_1, dtype = 'int32')] : sequence to apply for the phase 1 of the recurrence step, the last step has no phase 2
+    '''
+    
+    hidden_var_coefs, _, _, _, initial_hidden_var_coefs, _, _, _ = constraint_function(all_params, all_initial_params, dtype)
+    
+    recurrent_current_hidden_var_coefs = np.copy(hidden_var_coefs[:,0,0,:nb_hidden_vars])
+    recurrent_next_hidden_var_coefs = np.copy(hidden_var_coefs[:,0,0,nb_hidden_vars:])
+    
+    current_hidden_var_coefs = hidden_var_coefs[:,0,0,:nb_hidden_vars]
+    next_hidden_var_coefs = hidden_var_coefs[:,0,0,nb_hidden_vars:]
+        
+    current_initial_hidden_var_coefs = initial_hidden_var_coefs[:,0,0,:nb_hidden_vars]
+    next_initial_hidden_var_coefs = tf.zeros((nb_hidden_vars, nb_hidden_vars), dtype = dtype) # these coefs must equal 0 as the initial gaussians must only depend on the fist set of hidden states
+    
+    current_hidden_var_coefs = np.concatenate((current_initial_hidden_var_coefs, current_hidden_var_coefs), axis = 0)
+    next_hidden_var_coefs = np.concatenate((next_initial_hidden_var_coefs, next_hidden_var_coefs), axis = 0)
+    
+    current_nb_gaussians = len(current_hidden_var_coefs)
+    
+    '''
+    Initial step:
+    '''
+    
+    initial_sequence_phase_1 = [] # list of lists containing the sequence of coef_index and gaussian IDs to
+    initial_functions_phase_1 = []
+    
+    #print('LC1',LC)
+    for coef_index in range(nb_hidden_vars):
+        non_zero_gaussian_IDs = []
+        for Gaussian_ID in range(current_nb_gaussians):
+            Coef = current_hidden_var_coefs[Gaussian_ID,coef_index]
+            if Coef != 0:
+                non_zero_gaussian_IDs.append(Gaussian_ID)
+        
+        for i in range(len(non_zero_gaussian_IDs)-1):
+            
+            ID_1 = non_zero_gaussian_IDs[i]
+            ID_2 = non_zero_gaussian_IDs[i+1]
+            
+            initial_sequence_phase_1.append([coef_index, ID_1, ID_2])
+            initial_functions_phase_1.append(intermediate_RNN_function)
+            
+            C1 = current_hidden_var_coefs[ID_1, coef_index]
+            C2 = current_hidden_var_coefs[ID_2, coef_index]
+            current_hidden_var_coefs_1 = current_hidden_var_coefs[ID_1]
+            current_hidden_var_coefs_2 = current_hidden_var_coefs[ID_2]
+            next_hidden_var_coefs_1 = next_hidden_var_coefs[ID_1]
+            next_hidden_var_coefs_2 = next_hidden_var_coefs[ID_2]
+            
+            current_coefs3, current_coefs4, next_coefs3, next_coefs4 = simple_RNN_gaussian_product(C1, C2, current_hidden_var_coefs_1, current_hidden_var_coefs_2, next_hidden_var_coefs_1, next_hidden_var_coefs_2)
+            
+            current_hidden_var_coefs[ID_1] = current_coefs3
+            current_hidden_var_coefs[ID_2] = current_coefs4
+            
+            next_hidden_var_coefs[ID_1] = next_coefs3
+            next_hidden_var_coefs[ID_2] = next_coefs4
+            
+        if len(non_zero_gaussian_IDs)>1:
+            initial_functions_phase_1[-1] = final_RNN_function_phase_1
+        elif len(non_zero_gaussian_IDs)==1:
+            ID_1 = 0
+            ID_2 = non_zero_gaussian_IDs[0]
+            
+            initial_sequence_phase_1.append([coef_index, ID_1, ID_2])
+            initial_functions_phase_1.append(no_RNN_function_phase_1)
+        else: # if next_hidden_var_coefs is independent from the coefficient of index coef_index, nothing happens
+            pass
+        
+        if len(non_zero_gaussian_IDs)>=1:
+            current_hidden_var_coefs = np.delete(current_hidden_var_coefs, non_zero_gaussian_IDs[-1], 0)
+            next_hidden_var_coefs = np.delete(next_hidden_var_coefs, non_zero_gaussian_IDs[-1], 0)
+            current_nb_gaussians += -1
+    
+    initial_sequence_phase_2 = []
+    initial_functions_phase_2 = []
+    
+    saved_Gaussians = np.zeros((nb_hidden_vars, nb_hidden_vars))
+    # contrary to the integration step, we cannot remove Gaussians. Instead, we will save them to solve the linear problem
+    for coef_index in range(nb_hidden_vars):
+        
+        non_zero_gaussian_IDs = []
+        for Gaussian_ID in range(current_nb_gaussians):
+            Coef = next_hidden_var_coefs[Gaussian_ID,coef_index]
+            if Coef != 0:
+                non_zero_gaussian_IDs.append(Gaussian_ID)
+
+        for i in range(len(non_zero_gaussian_IDs)-1):
+            
+            ID_1 = non_zero_gaussian_IDs[i]
+            ID_2 = non_zero_gaussian_IDs[i+1]
+            
+            initial_sequence_phase_2.append([coef_index, ID_1, ID_2])
+            initial_functions_phase_2.append(intermediate_RNN_function)
+            
+            C1 = next_hidden_var_coefs[ID_1, coef_index]
+            C2 = next_hidden_var_coefs[ID_2, coef_index]
+            current_hidden_var_coefs_1 = next_hidden_var_coefs[ID_1]*0
+            current_hidden_var_coefs_2 = next_hidden_var_coefs[ID_2]*0
+            next_hidden_var_coefs_1 = next_hidden_var_coefs[ID_1]
+            next_hidden_var_coefs_2 = next_hidden_var_coefs[ID_2]
+            
+            current_coefs3, current_coefs4, next_coefs3, next_coefs4 = simple_RNN_gaussian_product(C1, C2, next_hidden_var_coefs_1, next_hidden_var_coefs_2, current_hidden_var_coefs_1, current_hidden_var_coefs_2)
+            
+            next_hidden_var_coefs[ID_1] = current_coefs3
+            next_hidden_var_coefs[ID_2] = current_coefs4
+            
         if len(non_zero_gaussian_IDs)>1:
             initial_functions_phase_2[-1] = final_RNN_function_phase_2
         elif len(non_zero_gaussian_IDs) == 1: # if there is already only one gaussian that depend on 
